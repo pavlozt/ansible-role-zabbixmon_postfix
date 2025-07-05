@@ -1,0 +1,81 @@
+#!/bin/bash
+#
+# DEPS: /usr/sbin/pflogsumm
+# DEPS: pygtail.py
+
+MAILLOG={{ zabbixmon_postfix_mainlog }}
+PYGTAIL={{ zabbixmon_postfix_pygtail }}
+
+
+FPOS=/tmp/zabbix-postfix-offset.dat
+PFLOGSUMM={{ zabbixmon_postfix_pflogsumm }}
+ZABBIX_CONF=/etc/zabbix/zabbix_agent{{ '2' if zabbix_agent2 else 'd' }}.conf
+ZABBIX_SENDER=/usr/bin/zabbix_sender
+
+{% if zabbixmon_postfix_debug %}
+ZBX_DEBUG_FILE=/tmp/zabbix-postfix-debug.log
+echo "New run:">> "$ZBX_DEBUG_FILE"
+{% endif %}
+
+
+convert_to_bytes() {
+    local value=$1
+    local num=${value%[k,m]}
+    local suffix=${value: -1}
+    local result
+
+    if [[ $suffix == "k" ]]; then
+        result=$((num * 1024))
+    elif [[ $suffix == "m" ]]; then
+        result=$((num * 1024 * 1024))
+    else
+        echo $value
+    fi
+    echo $result
+}
+
+DATA="$(${PYGTAIL} -o ${FPOS} ${MAILLOG} | ${PFLOGSUMM} -h 0 -u 0 --bounce_detail=0 --deferral_detail=0 --reject_detail=0 --no_no_msg_size --smtpd_warning_detail=0)"
+MAILQ_DATA=$(/usr/bin/mailq | grep -v "Mail queue is empty" | grep -c '^[0-9A-Z]')
+
+{% if zabbixmon_postfix_debug %}
+echo "$DATA" >> "$ZBX_DEBUG_FILE"
+{% endif %}
+
+pf_received=$(echo -e "$DATA" | grep -m 1 "received" | awk '{print $1}')
+pf_delivered=$(echo -e "$DATA" | grep -m 1 "delivered" | awk '{print $1}')
+pf_forwarded=$(echo -e "$DATA" | grep -m 1 "forwarded" | awk '{print $1}')
+pf_deferred=$(echo -e "$DATA" | grep -m 1 "deferred" | awk '{print $1}' | tr -d '()')
+pf_bounced=$(echo -e "$DATA" | grep -m 1 "bounced" | awk '{print $1}')
+pf_rejected=$(echo -e "$DATA" | grep -m 1 "rejected" | awk '{print $3}' | tr -d '()%')
+pf_rejectwarnings=$(echo -e "$DATA" | grep -m 1 "reject warnings" | awk '{print $1}')
+pf_held=$(echo -e "$DATA" | grep -m 1 "held" | awk '{print $1}')
+pf_discarded=$(echo -e "$DATA" | grep -m 1 "discarded" | awk '{print $1}' | tr -d '()%')
+pf_bytesreceived_txt=$(echo -e "$DATA" | grep -m 1 "bytes received" | awk '{print $1}')
+pf_bytesdelivered_txt=$(echo -e "$DATA" | grep -m 1 "bytes delivered" | awk '{print $1}')
+
+pf_bytesreceived=$(convert_to_bytes "$pf_bytesreceived_txt")
+pf_bytesdelivered=$(convert_to_bytes "$pf_bytesdelivered_txt")
+
+{% if zabbixmon_postfix_debug  %}
+echo "after call" >> "$ZBX_DEBUG_FILE"
+echo "pf_bytesreceived_txt: $pf_bytesreceived_txt" >> "$ZBX_DEBUG_FILE"
+echo "pf_bytesdelivered_txt: $pf_bytesdelivered_txt" >> "$ZBX_DEBUG_FILE"
+echo "pf_bytesreceived: $pf_bytesreceived" >> "$ZBX_DEBUG_FILE"
+echo "pf_bytesdelivered: $pf_bytesdelivered" >> "$ZBX_DEBUG_FILE"
+{% endif %}
+
+pf_mailq=$MAILQ_DATA
+
+ZABBIX_DATA_STR=$(
+  for var in received delivered forwarded deferred bounced rejected rejectwarnings held discarded bytesreceived bytesdelivered mailq; do
+    varname="pf_$var"
+    printf '%s\n' "- pf.$var ${!varname:-0}"
+  done
+)
+
+{% if zabbixmon_postfix_debug %}
+echo "values:" >> "$ZBX_DEBUG_FILE"
+echo "$ZABBIX_DATA_STR" >> "$ZBX_DEBUG_FILE"
+{% endif %}
+
+"$ZABBIX_SENDER" -c "$ZABBIX_CONF" -i <(echo "$ZABBIX_DATA_STR") {% if zabbixmon_postfix_debug %} >> "$ZBX_DEBUG_FILE" {% endif %} > /dev/null 2>&1

@@ -1,0 +1,22 @@
+---
+# based on https://github.com/rafael747/zabbix-postfix/
+galaxy_info:
+  author: PavelZ
+  description: Postfix Monitoring pack
+  license: GPLv3
+  min_ansible_version: '2.1'
+  platforms:
+    - name: Ubuntu
+      versions:
+        - xenial
+        - bionic
+    - name: Debian
+      versions:
+        - bookworm
+        - bullseye
+        - buster
+
+  galaxy_tags:
+    - mail
+    - postfix
+    - zabbix

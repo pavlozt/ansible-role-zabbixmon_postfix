@@ -1,0 +1,42 @@
+---
+- name: Deploy Postfix statistics scripts
+  when: zabbixmon_postfix | default(false)
+  block:
+
+    - name: Create /etc/zabbix/scripts
+      ansible.builtin.file:
+        path: /etc/zabbix/scripts
+        state: directory
+        mode: "0755"
+        owner: root
+        group: root
+
+    - name: Install packages
+      ansible.builtin.package:
+        name: "{{ zabbixmon_postfix_packages }}"
+        state: present
+
+
+    - name: Install pygtail.py script from local source
+      ansible.builtin.copy:
+        src: src/pygtail.py
+        dest: "{{ zabbixmon_postfix_pygtail }}"
+        mode: '0755'
+      when: zabbixmon_postfix_pygtail_install_from_role
+
+
+    - name: Deploy zabbix postfix script
+      ansible.builtin.template:
+        src: zabbix_postfix.sh.j2
+        dest: /etc/zabbix/scripts/zabbix_postfix.sh
+        mode: '0755'
+
+    # No need install sudoers in zabbix sender (passive) mode
+
+    - name: Setup zabbix_sender cron job
+      ansible.builtin.cron:
+        name: "Zabbix Postfix Stats sender"
+        minute: "*/5"
+        hour: "*"
+        job: "/etc/zabbix/scripts/zabbix_postfix.sh"
+        state: present

@@ -1,0 +1,35 @@
+zabbixmon_postfix: false
+zabbixmon_postfix_pygtail: |-
+  {{
+      {
+          'RedHat': '/usr/local/sbin/pygtail.py',
+          'Debian': '/usr/bin/pygtail'
+      }[ansible_os_family]
+  }}
+zabbixmon_postfix_pflogsumm: /usr/sbin/pflogsumm
+zabbixmon_postfix_mainlog: |-
+  {{
+      {
+          'RedHat': '/var/log/maillog',
+          'Debian': '/var/log/mail.log'
+      }[ansible_os_family]
+  }}
+
+zabbixmon_postfix_pygtail_install_from_role: |-
+  {{
+      {
+          'RedHat': true,
+          'Debian': false
+      }[ansible_os_family]
+  }}
+
+
+zabbixmon_postfix_packages: |-
+  {{
+      {
+          'RedHat': ['zabbix-sender','postfix-perl-scripts'],
+          'Debian': ['zabbix-sender','pflogsumm', 'pygtail']
+      }[ansible_os_family]
+  }}
+
+zabbixmon_postfix_debug: false
